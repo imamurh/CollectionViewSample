@@ -10,7 +10,11 @@ import UIKit
 
 class ViewController: UIViewController {
 
-    @IBOutlet weak var collectionView: UICollectionView!
+    @IBOutlet weak var collectionView: UICollectionView!{
+        didSet {
+            collectionView.setCollectionViewLayout(CustomFlowLayout(), animated: false)
+        }
+    }
 
     enum CellType: String {
         case red
@@ -75,5 +79,63 @@ extension ViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         let item = sections[indexPath.section].items[indexPath.item]
         deleteItems(cellType: item.cellType, at: indexPath.section)
+    }
+}
+
+class CustomFlowLayout: UICollectionViewFlowLayout {
+
+    var minIndexPath: IndexPath?
+    var maxIndexPath: IndexPath?
+
+    override func prepare(forCollectionViewUpdates updateItems: [UICollectionViewUpdateItem]) {
+        print("prepare(forCollectionViewUpdates:)")
+        super.prepare(forCollectionViewUpdates: updateItems)
+        guard
+            let minIndexPath = updateItems.compactMap({ $0.indexPathBeforeUpdate ?? $0.indexPathAfterUpdate }).min(),
+            let maxIndexPath = updateItems.compactMap({ $0.indexPathBeforeUpdate ?? $0.indexPathAfterUpdate }).max()
+            else { return }
+        print("    min index path:", minIndexPath)
+        print("    max index path:", maxIndexPath)
+        self.minIndexPath = minIndexPath
+        self.maxIndexPath = maxIndexPath
+    }
+
+    override func targetContentOffset(forProposedContentOffset proposedContentOffset: CGPoint) -> CGPoint {
+        print("targetContentOffset(forProposedContentOffset:)")
+        let targetContentOffset = super.targetContentOffset(forProposedContentOffset: proposedContentOffset)
+        guard let collectionView = collectionView,
+            let minIndexPath = minIndexPath,
+            let maxIndexPath = maxIndexPath,
+            let minAttributes = layoutAttributesForItem(at: minIndexPath),
+            let maxAttributes = layoutAttributesForItem(at: maxIndexPath)
+            else { return targetContentOffset }
+
+        let viewTop = collectionView.contentOffset.y
+        let viewBottom = viewTop + collectionView.frame.size.height
+        print("        view range: \(viewTop) - \(viewBottom)")
+
+        let updateTop = minAttributes.frame.origin.y
+        let updateBottom = maxAttributes.frame.origin.y
+        print("      update range: \(updateTop) - \(updateBottom)")
+
+        let currentHeight = collectionView.contentSize.height
+        let newHeight = collectionViewContentSize.height
+        print("    current height:", currentHeight)
+        print("        new height:", newHeight)
+
+        if currentHeight > newHeight,
+            viewBottom > updateBottom {
+            let diff = currentHeight - newHeight
+            return CGPoint(x: targetContentOffset.x,
+                           y: max(collectionView.contentOffset.y - diff, 0))
+        }
+        return targetContentOffset
+    }
+
+    override func finalizeCollectionViewUpdates() {
+        print("finalizeCollectionViewUpdates()")
+        super.finalizeCollectionViewUpdates()
+        minIndexPath = nil
+        maxIndexPath = nil
     }
 }
